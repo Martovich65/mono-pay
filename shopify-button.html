@@ -1,0 +1,309 @@
+<!--
+  Вставьте этот блок в HTML-виджет Thank You Page (PageFly, ReConvert и т.д.).
+  Замените VERCEL_API_BASE на URL вашего деплоя Vercel (без слэша в конце).
+-->
+<div id="mono-pay-root" class="mono-pay-root" aria-live="polite"></div>
+
+<style>
+  .mono-pay-root {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    max-width: 420px;
+    margin: 1.5rem auto;
+    padding: 0 1rem;
+  }
+
+  .mono-pay-card {
+    background: linear-gradient(145deg, #0d0d0d 0%, #1a1a1a 100%);
+    border-radius: 16px;
+    padding: 1.25rem 1.5rem 1.5rem;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .mono-pay-title {
+    color: #f5f5f5;
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 0 0 0.35rem;
+    letter-spacing: -0.02em;
+  }
+
+  .mono-pay-subtitle {
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.8rem;
+    margin: 0 0 1rem;
+    line-height: 1.4;
+  }
+
+  .mono-pay-amount {
+    color: #fff;
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+  }
+
+  .mono-pay-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.65rem;
+    width: 100%;
+    padding: 0.95rem 1.25rem;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #0d0d0d;
+    background: linear-gradient(135deg, #ffffff 0%, #e8e8e8 100%);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  }
+
+  .mono-pay-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+
+  .mono-pay-btn:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  .mono-pay-btn:disabled {
+    opacity: 0.65;
+    cursor: wait;
+  }
+
+  .mono-pay-btn svg {
+    flex-shrink: 0;
+  }
+
+  .mono-pay-success {
+    text-align: center;
+    padding: 1.25rem;
+    background: linear-gradient(145deg, #0f2e1a 0%, #143d24 100%);
+    border-radius: 14px;
+    color: #b8f5c8;
+    font-size: 0.95rem;
+    font-weight: 500;
+    border: 1px solid rgba(72, 199, 116, 0.25);
+  }
+
+  .mono-pay-error {
+    margin-top: 0.75rem;
+    font-size: 0.8rem;
+    color: #ff8a8a;
+    text-align: center;
+  }
+
+  .mono-pay-loader {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid rgba(13, 13, 13, 0.2);
+    border-top-color: #0d0d0d;
+    border-radius: 50%;
+    animation: mono-spin 0.7s linear infinite;
+  }
+
+  @keyframes mono-spin {
+    to { transform: rotate(360deg); }
+  }
+</style>
+
+<script>
+(function () {
+  'use strict';
+
+  // === КОНФИГУРАЦИЯ: укажите URL вашего Vercel-проекта ===
+  const VERCEL_API_BASE = 'https://YOUR-PROJECT.vercel.app';
+  const CREATE_PAYMENT_URL = VERCEL_API_BASE + '/api/create-payment';
+
+  const ROOT_ID = 'mono-pay-root';
+  const MAX_CHECKOUT_WAIT_MS = 12000;
+  const POLL_INTERVAL_MS = 150;
+
+  const root = document.getElementById(ROOT_ID);
+  if (!root) return;
+
+  /**
+   * Ожидает появления Shopify.checkout (асинхронная загрузка на Thank You).
+   */
+  function waitForCheckout() {
+    return new Promise(function (resolve, reject) {
+      if (window.Shopify && window.Shopify.checkout) {
+        resolve(window.Shopify.checkout);
+        return;
+      }
+
+      var elapsed = 0;
+      var timer = setInterval(function () {
+        elapsed += POLL_INTERVAL_MS;
+        if (window.Shopify && window.Shopify.checkout) {
+          clearInterval(timer);
+          resolve(window.Shopify.checkout);
+          return;
+        }
+        if (elapsed >= MAX_CHECKOUT_WAIT_MS) {
+          clearInterval(timer);
+          reject(new Error('Shopify.checkout не загрузился'));
+        }
+      }, POLL_INTERVAL_MS);
+    });
+  }
+
+  /**
+   * Проверка: заказ уже оплачен (manual payment / повторный визит).
+   */
+  function isOrderPaid(checkout) {
+    var status = (checkout.financial_status || checkout.payment_status || '').toLowerCase();
+    if (status === 'paid' || status === 'partially_paid') return true;
+
+    var due = checkout.payment_due;
+    if (due !== undefined && due !== null) {
+      var dueNum = parseFloat(String(due).replace(',', '.'));
+      if (!isNaN(dueNum) && dueNum <= 0) return true;
+    }
+
+    return false;
+  }
+
+  function parseAmountUah(checkout) {
+    var raw = checkout.total_price;
+    if (raw === undefined || raw === null) return null;
+
+    var value = parseFloat(String(raw).replace(',', '.'));
+    if (isNaN(value)) return null;
+
+    // Shopify.checkout.total_price обычно в основных единицах валюты (грн), не в копейках
+    if (value > 100000) {
+      value = value / 100;
+    }
+
+    return value;
+  }
+
+  function formatUah(amount) {
+    return new Intl.NumberFormat('uk-UA', {
+      style: 'currency',
+      currency: 'UAH',
+      minimumFractionDigits: 2,
+    }).format(amount);
+  }
+
+  function showPaidMessage() {
+    root.innerHTML =
+      '<div class="mono-pay-success">Заказ успешно оплачен. Спасибо!</div>';
+  }
+
+  function showError(message) {
+    var el = root.querySelector('.mono-pay-error');
+    if (el) {
+      el.textContent = message;
+    } else {
+      root.insertAdjacentHTML(
+        'beforeend',
+        '<p class="mono-pay-error" role="alert">' + message + '</p>'
+      );
+    }
+  }
+
+  function monobankIconSvg() {
+    return (
+      '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+      '<rect width="24" height="24" rx="6" fill="#0d0d0d"/>' +
+      '<path d="M7 12h10M12 7v10" stroke="#fff" stroke-width="2" stroke-linecap="round"/>' +
+      '</svg>'
+    );
+  }
+
+  function renderPaymentUI(checkout, amountUah, orderId) {
+    root.innerHTML =
+      '<div class="mono-pay-card">' +
+      '<p class="mono-pay-title">Оплата замовлення</p>' +
+      '<p class="mono-pay-subtitle">Monobank · Apple Pay · Google Pay</p>' +
+      '<p class="mono-pay-amount">' + formatUah(amountUah) + '</p>' +
+      '<button type="button" class="mono-pay-btn" id="mono-pay-btn">' +
+      monobankIconSvg() +
+      '<span>Оплатити через Monobank / Apple Pay</span>' +
+      '</button>' +
+      '<p class="mono-pay-error" role="alert" hidden></p>' +
+      '</div>';
+
+    var btn = document.getElementById('mono-pay-btn');
+    var errorEl = root.querySelector('.mono-pay-error');
+
+    function setError(msg) {
+      errorEl.hidden = !msg;
+      errorEl.textContent = msg || '';
+    }
+
+    btn.addEventListener('click', function () {
+      setError('');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="mono-pay-loader"></span> Створюємо рахунок…';
+
+      fetch(CREATE_PAYMENT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: String(orderId),
+          amount: amountUah,
+        }),
+      })
+        .then(function (res) {
+          return res.json().then(function (data) {
+            return { ok: res.ok, data: data };
+          });
+        })
+        .then(function (result) {
+          if (!result.ok || !result.data.pageUrl) {
+            throw new Error(
+              (result.data && result.data.error) ||
+                'Не вдалося створити платіж'
+            );
+          }
+          window.location.href = result.data.pageUrl;
+        })
+        .catch(function (err) {
+          btn.disabled = false;
+          btn.innerHTML =
+            monobankIconSvg() +
+            '<span>Оплатити через Monobank / Apple Pay</span>';
+          setError(err.message || 'Помилка зʼєднання. Спробуйте ще раз.');
+        });
+    });
+  }
+
+  waitForCheckout()
+    .then(function (checkout) {
+      if (isOrderPaid(checkout)) {
+        showPaidMessage();
+        return;
+      }
+
+      var orderId = checkout.order_id || checkout.order_number;
+      var amountUah = parseAmountUah(checkout);
+
+      if (!orderId) {
+        root.innerHTML =
+          '<p class="mono-pay-error">Не знайдено order_id у Shopify.checkout</p>';
+        return;
+      }
+
+      if (!amountUah || amountUah <= 0) {
+        root.innerHTML =
+          '<p class="mono-pay-error">Не вдалося визначити суму замовлення</p>';
+        return;
+      }
+
+      renderPaymentUI(checkout, amountUah, orderId);
+    })
+    .catch(function (err) {
+      root.innerHTML =
+        '<p class="mono-pay-error">' +
+        (err.message || 'Помилка ініціалізації') +
+        '</p>';
+    });
+})();
+</script>

@@ -1,0 +1,42 @@
+{
+  "version": 2,
+  "functions": {
+    "api/auth.js": {
+      "memory": 128,
+      "maxDuration": 10
+    },
+    "api/create-payment.js": {
+      "memory": 256,
+      "maxDuration": 15
+    },
+    "api/webhook.js": {
+      "memory": 256,
+      "maxDuration": 15
+    }
+  },
+  "routes": [
+    {
+      "src": "/api/auth",
+      "dest": "/api/auth.js",
+      "methods": ["GET"]
+    },
+    {
+      "src": "/api/create-payment",
+      "dest": "/api/create-payment.js",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/webhook",
+      "dest": "/api/webhook.js",
+      "methods": ["POST"]
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" }
+      ]
+    }
+  ]
+}

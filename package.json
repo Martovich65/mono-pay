@@ -1,0 +1,20 @@
+{
+  "name": "mono-shopify-pay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Serverless Monobank payment gateway for Shopify (Manual Payment) on Vercel",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "keywords": [
+    "shopify",
+    "monobank",
+    "vercel",
+    "payments"
+  ],
+  "license": "MIT"
+}
